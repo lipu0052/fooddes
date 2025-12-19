@@ -619,17 +619,34 @@ export function getCookKitRecommendation(
   // Ensure fallback_used is true if a clarification is asked
   if (followup_question && !fallback_used) fallback_used = true;
 
-return {
-  decision,
-  matches: matches.slice(0, 5),
-  excluded,
-  intent,
-  applied_filters,
-  fallback_used,
-  explanation,
-  failure_type,
-  followup_question
-};
+  return {
+    decision,
+    matches: matches.slice(0, 5),
+    excluded,
+    intent,
+    applied_filters,
+    fallback_used,
+    explanation,
+    failure_type,
+    followup_question,
+
+    debug: {
+      intent,
+      applied_filters,
+      excluded_count: excluded.length,
+      match_scores: matches.slice(0, 5).map(m => ({
+        recipe_id: m.recipe.id,
+        score: m.score,
+        reasons: m.reasons
+      })),
+      decision_reason: followup_question
+        ? "Clarification required due to conflicting or incomplete intent"
+        : fallback_used
+          ? "Fallback triggered because strict constraints reduced viable matches"
+          : "Enough high-confidence matches found"
+    }
+  };
+
 
 
 

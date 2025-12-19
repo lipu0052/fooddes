@@ -152,7 +152,6 @@ export interface AppliedFilter {
   value: string;
   type: "hard" | "soft";
 }
-
 export interface RecommendationResult {
   decision: "recommendation" | "clarification" | "fallback";
 
@@ -173,6 +172,17 @@ export interface RecommendationResult {
     | null;
 
   followup_question?: string;
+
+  // 👇 ADD THIS
+  debug?: {
+    intent: DetectedIntent;
+    applied_filters: AppliedFilter[];
+    excluded_count: number;
+    match_scores: {
+      recipe_id: string;
+      score: number;
+      reasons: string[];
+    }[];
+    decision_reason: string;
+  };
 }
-
-
