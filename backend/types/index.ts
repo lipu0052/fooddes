@@ -154,14 +154,15 @@ export interface AppliedFilter {
 }
 
 export interface RecommendationResult {
-  matches: RecipeMatch[];                    // Top 5 sorted by score
-  excluded: ExcludedRecipe[];                // For debugging/transparency
+  decision: "recommendation" | "clarification" | "fallback";
+
+  matches: RecipeMatch[];
+  excluded: ExcludedRecipe[];
   intent: DetectedIntent;
   applied_filters: AppliedFilter[];
   fallback_used: boolean;
   explanation: string;
 
-  // Failure handling
   failure_type:
     | "contradictory_constraints"
     | "impossible_time"
@@ -170,5 +171,8 @@ export interface RecommendationResult {
     | "vague_query"
     | "off_topic"
     | null;
-  followup_question?: string;                // Max one question per North Star UX
+
+  followup_question?: string;
 }
+
+

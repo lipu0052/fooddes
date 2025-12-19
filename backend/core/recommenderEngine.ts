@@ -14,9 +14,9 @@ import {
 import { recipes } from '../data/recipes';
 
 export function getCookKitRecommendation(
-  intent: DetectedIntent,
-  debug: boolean = false
-): any {
+  intent: DetectedIntent
+): RecommendationResult {
+
   const matches: RecipeMatch[] = [];
   const excluded: ExcludedRecipe[] = [];
   const applied_filters: AppliedFilter[] = [];
@@ -25,31 +25,31 @@ export function getCookKitRecommendation(
   let fallback_used = false;
   let explanation = "";
 
-  if (intent.time_constraint && intent.time_constraint < 10) {
-    return {
-      matches: recipes
-        .sort((a, b) =>
-          (a.prep_time_minutes + a.cook_time_minutes) -
-          (b.prep_time_minutes + b.cook_time_minutes)
-        )
-        .slice(0, 5)
-        .map(r => ({
-          recipe: r,
-          score: 15,
-          reasons: [
-            `Fastest available: ready in ${r.prep_time_minutes + r.cook_time_minutes} minutes`
-          ]
-        })),
-      excluded: [],
-      intent,
-      applied_filters,
-      fallback_used: true,
-      explanation:
-        "No fresh-cooked dish can be ready in under 10 minutes. Here are the fastest realistic options:",
-      failure_type: "impossible_time",
-      followup_question: undefined
-    };
-  }
+  // if (intent.time_constraint && intent.time_constraint < 10) {
+  //   return {
+  //     matches: recipes
+  //       .sort((a, b) =>
+  //         (a.prep_time_minutes + a.cook_time_minutes) -
+  //         (b.prep_time_minutes + b.cook_time_minutes)
+  //       )
+  //       .slice(0, 5)
+  //       .map(r => ({
+  //         recipe: r,
+  //         score: 15,
+  //         reasons: [
+  //           `Fastest available: ready in ${r.prep_time_minutes + r.cook_time_minutes} minutes`
+  //         ]
+  //       })),
+  //     excluded: [],
+  //     intent,
+  //     applied_filters,
+  //     fallback_used: true,
+  //     explanation:
+  //       "No fresh-cooked dish can be ready in under 10 minutes. Here are the fastest realistic options:",
+  //     failure_type: "impossible_time",
+  //     followup_question: undefined
+  //   };
+  // }
 
   if (intent.package_preference) {
     applied_filters.push({
@@ -608,58 +608,29 @@ export function getCookKitRecommendation(
     }
   }
 
-const decision =
+  const decision: "recommendation" | "clarification" | "fallback" =
+    followup_question
+      ? "clarification"
+      : fallback_used
+        ? "fallback"
+        : "recommendation";
+
+
+  // Ensure fallback_used is true if a clarification is asked
+  if (followup_question && !fallback_used) fallback_used = true;
+
+return {
+  decision,
+  matches: matches.slice(0, 5),
+  excluded,
+  intent,
+  applied_filters,
+  fallback_used,
+  explanation,
+  failure_type,
   followup_question
-    ? "clarification"
-    : fallback_used
-      ? "fallback"
-      : "recommendation";
-
-// Ensure fallback_used is true if a clarification is asked
-if (followup_question && !fallback_used) fallback_used = true;
+};
 
 
-  if (!debug) {
-    // CLEAN user-facing response (Phase 0)
-    return {
-      decision,
-      explanation,
-      recipes: matches.slice(0, 5).map(m => ({
-        id: m.recipe.id,
-        name: m.recipe.name
-      })),
-      followup_question
-    };
-  }
-
-  // DEBUG MODE — FULL TRANSPARENCY
-  return {
-    decision,
-
-    debug: {
-      detected_intent: intent,
-
-      inferred_preferences: applied_filters,
-
-      missing_information: followup_question ? [followup_question] : [],
-
-      applied_rules: applied_filters,
-
-      ranking: matches.slice(0, 5).map(m => ({
-        recipe: m.recipe.name,
-        score: m.score,
-        reasons: m.reasons
-      })),
-
-      excluded_recipes: excluded,
-
-      failure_type,
-      fallback_used
-    },
-
-    explanation,
-    followup_question,
-    recommendations: matches.slice(0, 5).map(m => m.recipe)
-  };
 
 }
