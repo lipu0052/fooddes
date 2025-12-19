@@ -35,15 +35,13 @@ function getPendingRecipe(pendingId?: string): Recipe | null {
 }
 
 router.post('/recommend', (req, res) => {
-  const { message, userId = 'anon' } = req.body;
-
+const { message, userId = 'anon', debug = false } = req.body;
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'Message is required and must be a string' });
   }
 
   try {
-    const recommenderResult: RecommendationResult = getRecommendation(message); // ← CHANGED (was detectIntent + recommendRecipes)
-
+const recommenderResult = getRecommendation(message, debug);
     if (recommenderResult.failure_type === 'impossible_time') {
       res.json({
         success: true,

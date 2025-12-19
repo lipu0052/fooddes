@@ -13,7 +13,10 @@ import {
 } from '../types';
 import { recipes } from '../data/recipes';
 
-export function getCookKitRecommendation(intent: DetectedIntent): RecommendationResult {
+export function getCookKitRecommendation(
+  intent: DetectedIntent,
+  debug: boolean = false
+): any {
   const matches: RecipeMatch[] = [];
   const excluded: ExcludedRecipe[] = [];
   const applied_filters: AppliedFilter[] = [];
@@ -605,14 +608,58 @@ export function getCookKitRecommendation(intent: DetectedIntent): Recommendation
     }
   }
 
+const decision =
+  followup_question
+    ? "clarification"
+    : fallback_used
+      ? "fallback"
+      : "recommendation";
+
+// Ensure fallback_used is true if a clarification is asked
+if (followup_question && !fallback_used) fallback_used = true;
+
+
+  if (!debug) {
+    // CLEAN user-facing response (Phase 0)
+    return {
+      decision,
+      explanation,
+      recipes: matches.slice(0, 5).map(m => ({
+        id: m.recipe.id,
+        name: m.recipe.name
+      })),
+      followup_question
+    };
+  }
+
+  // DEBUG MODE — FULL TRANSPARENCY
   return {
-    matches: matches.slice(0, 5),
-    excluded,
-    intent,
-    applied_filters,
-    fallback_used,
+    decision,
+
+    debug: {
+      detected_intent: intent,
+
+      inferred_preferences: applied_filters,
+
+      missing_information: followup_question ? [followup_question] : [],
+
+      applied_rules: applied_filters,
+
+      ranking: matches.slice(0, 5).map(m => ({
+        recipe: m.recipe.name,
+        score: m.score,
+        reasons: m.reasons
+      })),
+
+      excluded_recipes: excluded,
+
+      failure_type,
+      fallback_used
+    },
+
     explanation,
-    failure_type,
-    followup_question
+    followup_question,
+    recommendations: matches.slice(0, 5).map(m => m.recipe)
   };
+
 }
