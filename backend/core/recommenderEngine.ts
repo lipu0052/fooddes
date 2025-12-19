@@ -223,268 +223,118 @@ export function getCookKitRecommendation(
     }
   }
 
-  for (const recipe of candidates) {
-    const excluded_reasons: string[] = [];
-    let score = 0;
-    const reasons: string[] = [];
+  // --- REFACTORED CANDIDATE SCORING LOGIC ---
 
-    if (intent.veg_preference && recipe.veg_nonveg !== intent.veg_preference) {
-      excluded_reasons.push(`Does not match your ${intent.veg_preference} preference (recipe is ${recipe.veg_nonveg})`);
-    }
+for (const recipe of candidates) {
+  const excluded_reasons: string[] = [];
+  let score = 0;
+  const reasons: string[] = [];
 
-    if (intent.jain && !recipe.diet_tags.includes("jain")) {
-      excluded_reasons.push(`Not Jain-friendly (may contain onion/garlic/roots)`);
-    }
-
-    if (intent.exclude_spicy && recipe.spice_level === "spicy") {
-      excluded_reasons.push(`Too spicy for your mild preference (recipe spice level is spicy)`);
-    }
-
+  // --- HARD FILTERS FIRST ---
+  if (intent.veg_preference && recipe.veg_nonveg !== intent.veg_preference) {
+    excluded_reasons.push(`Does not match your ${intent.veg_preference} preference.`);
+  }
+  if (intent.jain && !recipe.diet_tags.includes("jain")) {
+    excluded_reasons.push(`Not Jain-friendly (may contain onion/garlic/roots).`);
+  }
+  if (intent.exclude_spicy && recipe.spice_level === "spicy") {
+    excluded_reasons.push(`Too spicy for your preference.`);
+  }
+  if (intent.time_constraint) {
     const totalTime = recipe.prep_time_minutes + recipe.cook_time_minutes;
-    if (intent.time_constraint && totalTime > intent.time_constraint) {
-      excluded_reasons.push(`Takes ${totalTime} minutes, which exceeds your ${intent.time_constraint}-minute limit`);
-    } else if (intent.time_constraint) {
-      score += 30;
-      reasons.push(`Fits your time limit: ready in ${totalTime} minutes`);
-    }
-
-    if (intent.no_chopping && recipe.prep_time_minutes > 5) {
-      excluded_reasons.push(`Requires prep/chopping (prep time ${recipe.prep_time_minutes} mins)`);
-    }
-
-    if (intent.no_dairy && recipe.contains_dairy) {
-      excluded_reasons.push(`Contains dairy, which you requested to avoid`);
-    }
-
-    if (intent.no_paneer && recipe.contains_paneer) {
-      excluded_reasons.push(`Contains paneer, which you requested to avoid`);
-    }
-
-    if (intent.no_egg && recipe.contains_egg) {
-      excluded_reasons.push(`Contains egg, which you requested to avoid`);
-    }
-
-    if (intent.allergen_tags && intent.allergen_tags.some(tag => recipe.allergen_tags.includes(tag))) {
-      excluded_reasons.push(`Contains allergen(s) you want to avoid: ${intent.allergen_tags.join(", ")}`);
-    }
-
-    if (intent.avoid_if && intent.avoid_if.some(avoid => recipe.avoid_if.includes(avoid))) {
-      excluded_reasons.push(`Not suitable for your avoid condition: ${intent.avoid_if.join(", ")}`);
-    }
-
-    if (intent.seasonality && !intent.seasonality.some(s => recipe.seasonality.includes(s))) {
-      excluded_reasons.push(`Not in season for your preferences: ${intent.seasonality.join(", ")}`);
-    }
-
-    if (intent.sensitive_stomach) {
-      if (recipe.spice_level !== "mild" || recipe.oil_level !== "low" || recipe.calorie_density !== "light") {
-        excluded_reasons.push(`Not suitable for sensitive stomach (may be spicy/oily/heavy)`);
-      }
-    }
-
-    if (excluded_reasons.length > 0) {
-      excluded.push({ recipe, excluded_reasons });
-      continue;
-    }
-
-    if (intent.package_preference && recipe.package === intent.package_preference) {
-      score += 60;
-      reasons.push(`Matches your package preference: ${intent.package_preference}`);
-    }
-
-    if (intent.protein_type?.some(p => recipe.primary_protein === p || recipe.secondary_protein === p)) {
-      score += 40;
-      reasons.push(`Features preferred protein: ${recipe.primary_protein || recipe.secondary_protein}`);
-    }
-
-    if (intent.high_protein) {
-      if (recipe.protein_density === "high") {
-        score += 50;
-        reasons.push(`High protein density match`);
-      } else if (recipe.protein_density === "medium") {
-        score += 15;
-        reasons.push(`Medium protein density — reasonable fit`);
-      } else {
-        score -= 20;
-      }
-    }
-
-    if (intent.low_oil) {
-      if (recipe.oil_level === "low") {
-        score += 50;
-        reasons.push(`Very low oil — ideal for 'very less oil' preference`);
-      } else if (recipe.oil_level === "medium") {
-        score += 10;
-        reasons.push(`Medium oil — acceptable but not the lightest`);
-      } else if (recipe.oil_level === "high") {
-        score -= 60;
-      }
-    }
-
-    if (intent.light_meal) {
-      if (recipe.calorie_density === "light") {
-        score += 40;
-        reasons.push(`Light calorie density — easy on digestion`);
-      } else if (recipe.calorie_density === "medium") {
-        score += 10;
-        reasons.push(`Medium calorie — moderate fit for light meal`);
-      } else {
-        score -= 30;
-      }
-    }
-
-    if (intent.sensitive_stomach) {
-      if (recipe.spice_level === "mild") score += 20;
-      if (recipe.oil_level === "low") score += 20;
-      if (recipe.calorie_density === "light") score += 20;
-      reasons.push(`Suitable for sensitive stomach: mild, low oil, light`);
-    }
-
-    if (intent.spice_level && recipe.spice_level === intent.spice_level) {
-      score += 25;
-      reasons.push(`Exact spice level match: ${intent.spice_level}`);
-    } else if (intent.spice_level) {
-      score -= 10;
-    }
-
-    if (intent.health_preference === "healthy") {
-      if (recipe.health_positioning === "healthy" || recipe.calorie_density === "light") {
-        score += 35;
-        reasons.push(`Healthy positioning — low calorie/light`);
-      } else if (recipe.health_positioning === "balanced") {
-        score += 10;
-        reasons.push(`Balanced health — moderate fit`);
-      } else {
-        score -= 20;
-      }
-    } else if (intent.health_preference === "indulgent") {
-      if (recipe.health_positioning === "indulgent" || recipe.calorie_density === "high") {
-        score += 30;
-        reasons.push(`Indulgent and rich — perfect match`);
-      } else {
-        score -= 10;
-      }
-    }
-
-    if (intent.comfort_food && recipe.comfort_food) {
-      score += 45;
-      reasons.push(`Comfort food match — familiar and soothing`);
-    }
-
-    if (intent.novelty && (recipe.package === "aaj_kuch_naya" || recipe.typical_user_intents.includes("something different"))) {
-      score += 45;
-      reasons.push(`Novelty match — something new and exciting`);
-    }
-
-    if (intent.family_friendly && recipe.kid_friendly) {
-      score += 30;
-      reasons.push(`Kid and family friendly — mild and appealing`);
-    }
-
-    if (intent.cuisine_style?.includes(recipe.cuisine_style) || intent.cuisine_style?.includes(recipe.region_style)) {
-      score += 35;
-      reasons.push(`Cuisine/region match: ${recipe.cuisine_style || recipe.region_style}`);
-    }
-
-    if (recipe.best_seller) {
-      score += 40;
-      reasons.push(`Best seller — proven popular choice`);
-    } else if (intent.best_sellers) {
-      score -= 15;
-    }
-
-    if (intent.day_type === "weekday" && recipe.weekday_suitable) {
-      score += 20;
-      reasons.push(`Suitable for weekdays — quick and simple`);
-    } else if (intent.day_type === "weekend" && recipe.weekend_indulgent) {
-      score += 20;
-      reasons.push(`Indulgent for weekends — special treat`);
-    }
-
-    if (intent.meal_type && recipe.meal_type.includes(intent.meal_type)) {
-      score += 25;
-      reasons.push(`Matches meal context: ${intent.meal_type}`);
-    }
-
-    if (intent.multi_meal && !recipe.avoid_if.includes("does not store well")) {
-      score += 25;
-      reasons.push(`Good for leftovers — cook once, eat twice`);
-    }
-
-    if (intent.is_vague && recipe.difficulty_level === "easy") {
-      score += 15;
-      reasons.push(`Easy difficulty — no hassle for tired days`);
-    }
-    if (intent.difficulty_preference && recipe.difficulty_level === intent.difficulty_preference) {
-      score += 20;
-      reasons.push(`Matches difficulty preference: ${intent.difficulty_preference}`);
-    }
-
-    if (intent.carb_type && recipe.carb_type === intent.carb_type) {
-      score += 20;
-      reasons.push(`Matches your carb preference: ${intent.carb_type}`);
-    }
-
-    if (intent.diet_tags && intent.diet_tags.some(tag => recipe.diet_tags.includes(tag))) {
-      score += 25;
-      reasons.push(`Matches your diet tags: ${intent.diet_tags.join(", ")}`);
-    }
-
-    if (intent.typical_spice_profile && intent.typical_spice_profile.some(profile => recipe.typical_spice_profile.includes(profile))) {
-      score += 15;
-      reasons.push(`Spice profile match: ${intent.typical_spice_profile.join(", ")}`);
-    }
-
-    if (intent.seasonality && intent.seasonality.some(s => recipe.seasonality.includes(s))) {
-      score += 15;
-      reasons.push(`In season for your preference: ${intent.seasonality.join(", ")}`);
-    }
-
-    if (intent.is_vague) {
-      failure_type = "vague_query";
-
-      if (recipe.best_seller) score += 100;
-      if (recipe.comfort_food) score += 90;
-      if (recipe.veg_nonveg === "veg") score += 80;
-      if (recipe.kid_friendly) score += 50;
-      if (recipe.weekday_suitable) score += 40;
-      if (recipe.difficulty_level === "easy") score += 30;
-
-      if (intent.is_vague) {
-        if (recipe.best_seller) score += 60;
-        if (recipe.comfort_food) score += 50;
-        if (recipe.veg_nonveg === "veg") score += 40;
-
-        if (!intent.package_preference) {
-          if (recipe.name.toLowerCase().includes("rajma")) score += 120;
-          if (recipe.name.toLowerCase().includes("dal makhani")) score += 100;
-        }
-
-        if (intent.veg_preference === "non_veg" && recipe.name.toLowerCase().includes("butter chicken")) {
-          score += 80;
-        }
-      }
-
-      if (recipe.name.toLowerCase().includes("butter chicken")) score += 120;
-
-      reasons.push("Safe, popular, no-brainer choice for when you don't want to think");
-    }
-
-    if (intent.people_count) {
-      if (intent.people_count === 1 && !recipe.kid_friendly) score += 10;
-      if (intent.people_count === 2 && recipe.weekend_indulgent) score += 10;
-      if (intent.people_count >= 4 && recipe.kid_friendly) score += 15;
-      reasons.push(`Adjusted for ${intent.people_count} people`);
-    }
-
-    if (score > 0 || intent.is_vague) {
-      matches.push({
-        recipe,
-        score,
-        reasons: reasons.length > 0 ? reasons : ["Solid recommendation based on your request"]
-      });
+    if (totalTime > intent.time_constraint) {
+      excluded_reasons.push(`Exceeds your time limit of ${intent.time_constraint} mins.`);
     }
   }
+  if (intent.no_chopping && recipe.prep_time_minutes > 5) {
+    excluded_reasons.push("Requires chopping/prep, which you wanted to avoid.");
+  }
+  if (intent.no_dairy && recipe.contains_dairy) excluded_reasons.push("Contains dairy.");
+  if (intent.no_paneer && recipe.contains_paneer) excluded_reasons.push("Contains paneer.");
+  if (intent.no_egg && recipe.contains_egg) excluded_reasons.push("Contains egg.");
+  if (intent.allergen_tags?.some(tag => recipe.allergen_tags.includes(tag))) {
+    excluded_reasons.push("Contains allergen(s) you want to avoid.");
+  }
+  if (intent.avoid_if?.some(tag => recipe.avoid_if.includes(tag))) {
+    excluded_reasons.push("Matches an avoid condition.");
+  }
+  if (intent.seasonality && !intent.seasonality.some(s => recipe.seasonality.includes(s))) {
+    excluded_reasons.push("Not in season.");
+  }
+
+  if (excluded_reasons.length > 0) {
+    excluded.push({ recipe, excluded_reasons });
+    continue;
+  }
+
+  // --- SOFT SCORING ---
+  if (intent.high_protein) {
+    score += recipe.protein_density === "high" ? 50 : recipe.protein_density === "medium" ? 15 : -20;
+    reasons.push(`Protein match: ${recipe.protein_density}`);
+  }
+  if (intent.low_oil) {
+    score += recipe.oil_level === "low" ? 50 : recipe.oil_level === "medium" ? 10 : -60;
+  }
+  if (intent.light_meal) {
+    score += recipe.calorie_density === "light" ? 40 : recipe.calorie_density === "medium" ? 10 : -30;
+  }
+  if (intent.sensitive_stomach) {
+    if (recipe.spice_level === "mild") score += 20;
+    if (recipe.oil_level === "low") score += 20;
+    if (recipe.calorie_density === "light") score += 20;
+    reasons.push("Suitable for sensitive stomach");
+  }
+  if (intent.spice_level && recipe.spice_level === intent.spice_level) {
+    score += 25;
+    reasons.push(`Exact spice level match: ${intent.spice_level}`);
+  }
+  if (intent.health_preference) {
+    if (intent.health_preference === "healthy") {
+      score += recipe.health_positioning === "healthy" || recipe.calorie_density === "light" ? 35 : recipe.health_positioning === "balanced" ? 10 : -20;
+    } else if (intent.health_preference === "indulgent") {
+      score += recipe.health_positioning === "indulgent" || recipe.calorie_density === "high" ? 30 : -10;
+    }
+  }
+  if (intent.comfort_food && recipe.comfort_food) score += 45;
+  if (intent.novelty && (recipe.package === "aaj_kuch_naya" || recipe.typical_user_intents.includes("something different"))) score += 45;
+  if (intent.family_friendly && recipe.kid_friendly) score += 30;
+  if (intent.best_sellers && recipe.best_seller) score += 40;
+
+  // --- VAGUE QUERY BOOST ---
+  if (intent.is_vague) {
+    score += recipe.best_seller ? 100 : 0;
+    score += recipe.comfort_food ? 90 : 0;
+    score += recipe.veg_nonveg === "veg" ? 80 : 0;
+    score += recipe.kid_friendly ? 50 : 0;
+    score += recipe.weekday_suitable ? 40 : 0;
+    score += recipe.difficulty_level === "easy" ? 30 : 0;
+    reasons.push("Safe, popular choice for vague query");
+    failure_type = "vague_query";
+  }
+
+  if (score > 0 || intent.is_vague) {
+    matches.push({ recipe, score, reasons });
+  }
+}
+
+// --- CONTRADICTORY CONSTRAINT CHECKS ---
+if (intent.high_protein && intent.veg_preference === "veg" && intent.no_paneer) {
+  const hasHighProteinVeg = matches.some(m => m.recipe.protein_density === "high" && m.recipe.veg_nonveg === "veg");
+  if (!hasHighProteinVeg) {
+    failure_type = "contradictory_constraints";
+    explanation = "High-protein vegetarian without paneer is very limited. Showing best alternatives.";
+    followup_question = "Include paneer for higher protein, or keep strictly no-paneer?";
+    fallback_used = true;
+  }
+}
+
+if (matches.length === 0) {
+  fallback_used = true;
+  explanation = "No matches found for your exact criteria. Showing safe, popular alternatives:";
+  const safeFallback = recipes.filter(r => r.best_seller || r.comfort_food).slice(0, 5);
+  safeFallback.forEach(r => matches.push({ recipe: r, score: 10, reasons: ["Popular and safe fallback"] }));
+}
+
 
   matches.sort((a, b) => b.score - a.score);
 
