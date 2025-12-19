@@ -33,16 +33,18 @@ export function detectIntent(userMessage: string): DetectedIntent {
     intent.veg_preference = "non_veg";
   }
 
-  // 3. Protein types
+  // 3. Protein types (EXCEPT paneer — handled separately below)
   const proteinTypes = new Set<string>();
   if (/\bchicken\b/.test(message)) proteinTypes.add("chicken");
   if (/\b(fish|prawn|seafood|machli)\b/.test(message)) proteinTypes.add("fish");
-  if (/\b(paneer|cottage cheese)\b/.test(message)) proteinTypes.add("paneer");
   if (/\b(dal|lentils|dhal|rajma|beans|chole|chickpea|pulses)\b/.test(message)) proteinTypes.add("lentils");
   if (/\b(mutton|goat|lamb)\b/.test(message)) proteinTypes.add("mutton");
   if (/\b(egg|anda)\b/.test(message)) proteinTypes.add("egg");
-  if (proteinTypes.size > 0) intent.protein_type = Array.from(proteinTypes);
 
+  // Will add paneer later only if positively wanted
+  if (proteinTypes.size > 0) {
+    intent.protein_type = Array.from(proteinTypes);
+  }
   // 4. Spice level
   if (/\b(spicy|teekha|hot|mirchi|masaledar|proper spicy|chatpata|south indian spicy vibes|teekha khana)\b/.test(message) && !/\b(not|no|kam|less|mild)\b/.test(message)) {
     intent.spice_level = "spicy";
@@ -82,7 +84,25 @@ export function detectIntent(userMessage: string): DetectedIntent {
   // 7. Specific constraints
   if (/\b(high protein|protein rich|protein wala|more protein|high protein dinner chahiye|protein heavy food suggest karo|gym ke baad kya khau|i want something healthy but filling|protein but not oily|post workout meal no junk|protein chahiye but simple)\b/.test(message)) intent.high_protein = true;
   if (/\b(no dairy|dairy free|without milk|no milk|no cream|lactose|no dairy please|milk products avoid|lactose intolerant|kuch bhi chalega bas paneer mat ho|dairy-free options)\b/.test(message)) intent.no_dairy = true;
-  if (/\b(no paneer|without paneer|no cottage cheese|no paneer please|healthy veg food without paneer|protein chahiye but paneer nahi|kuch bhi chalega bas paneer mat ho)\b/.test(message)) intent.no_paneer = true;
+
+  // PANEER: Separate positive vs negative detection
+  const hasPaneerMention = /\bpaneer\b/.test(message);
+  const hasPaneerNegation = /\b(no paneer|without paneer|not paneer|but not paneer|paneer nahi|paneer mat|avoid paneer|no cottage cheese|bas paneer mat|paneer avoid|paneer exclude|paneer mat ho)\b/.test(message);
+
+  if (hasPaneerNegation) {
+    intent.no_paneer = true;
+    // Ensure it's NOT added to protein_type
+    if (intent.protein_type) {
+      intent.protein_type = intent.protein_type.filter(p => p !== "paneer");
+    }
+  } else if (hasPaneerMention) {
+    // Positive mention → user wants paneer
+    if (!intent.protein_type) intent.protein_type = [];
+    if (!intent.protein_type.includes("paneer")) {
+      intent.protein_type.push("paneer");
+    }
+  }
+
   if (/\b(no egg|without egg|eggless|no anda|egg free|avoid egg|egg nahi khata|no eggs no meat|sirf veg but no paneer|no eggs)\b/.test(message)) intent.no_egg = true;
 
   // 8. Style & occasion
@@ -108,7 +128,7 @@ export function detectIntent(userMessage: string): DetectedIntent {
   // In the vague query regex block
   const vagueMatch = /\b(kya banau|kya khana|dont ask questions|just recommend|dont ask|no questions|pick for me|surprise me|random|anything|whatever|kuch bhi|decide karo|dimag nahi|brain dead|tired|exhausted)\b/i.test(message);
 
-  // Only vague if NO strong constraints detected
+  // Only vague if NO strong constraints detected (expanded for better accuracy)
   intent.is_vague =
     vagueMatch &&
     !intent.time_constraint &&
@@ -117,7 +137,15 @@ export function detectIntent(userMessage: string): DetectedIntent {
     !intent.veg_preference &&
     !intent.protein_type &&
     !intent.health_preference &&
-    !intent.meal_type;
+    !intent.meal_type &&
+    !intent.spice_level &&
+    !intent.package_preference &&
+    !intent.jain &&
+    !intent.no_dairy &&
+    !intent.no_egg &&
+    !intent.no_paneer &&
+    !intent.exclude_spicy;
+
   // 12. New: meal_type
   if (/\b(lunch|dopahar ka khana|office lunch|something light for lunch|lunch ke liye kya banaun|office lunch type food|lunch ideas chaiye)\b/.test(message)) {
     intent.meal_type = "lunch";
@@ -138,7 +166,7 @@ export function detectIntent(userMessage: string): DetectedIntent {
   } else if (/\b(couple|2 log|two|me and wife|hum dono|date night|couple dinner ideas|date night at home|hum dono ke liye kuch|2 ke liye kya banaun|2 people|dinner for two|me and wife dinner|hum dono ke liye kuch)\b/.test(message)) {
     intent.people_count = 2;
   } else if (/\b(family|parivar|kids|children|bachche|whole family|family meals|4 log|family ke liye kya banaun)\b/.test(message)) {
-intent.people_count = 4; // minimum family size (used as lower bound)
+    intent.people_count = 4; // minimum family size (used as lower bound)
   }
 
   // 15. New: multi_meal

@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { recipes } from '../data/recipes';
 
+
 export function getCookKitRecommendation(
   intent: DetectedIntent
 ): RecommendationResult {
@@ -25,31 +26,43 @@ export function getCookKitRecommendation(
   let fallback_used = false;
   let explanation = "";
 
-  // if (intent.time_constraint && intent.time_constraint < 10) {
-  //   return {
-  //     matches: recipes
-  //       .sort((a, b) =>
-  //         (a.prep_time_minutes + a.cook_time_minutes) -
-  //         (b.prep_time_minutes + b.cook_time_minutes)
-  //       )
-  //       .slice(0, 5)
-  //       .map(r => ({
-  //         recipe: r,
-  //         score: 15,
-  //         reasons: [
-  //           `Fastest available: ready in ${r.prep_time_minutes + r.cook_time_minutes} minutes`
-  //         ]
-  //       })),
-  //     excluded: [],
-  //     intent,
-  //     applied_filters,
-  //     fallback_used: true,
-  //     explanation:
-  //       "No fresh-cooked dish can be ready in under 10 minutes. Here are the fastest realistic options:",
-  //     failure_type: "impossible_time",
-  //     followup_question: undefined
-  //   };
-  // }
+  // === ADD THIS FUNCTION HERE ===
+  function passesHardFilters(recipe: Recipe, intent: DetectedIntent): { passes: boolean; reasons: string[] } {
+    const excluded_reasons: string[] = [];
+
+    if (intent.veg_preference && recipe.veg_nonveg !== intent.veg_preference) {
+      excluded_reasons.push(`Does not match your ${intent.veg_preference} preference.`);
+    }
+    if (intent.jain && !recipe.diet_tags.includes("jain")) {
+      excluded_reasons.push(`Not Jain-friendly (may contain onion/garlic/roots).`);
+    }
+    if (intent.exclude_spicy && recipe.spice_level === "spicy") {
+      excluded_reasons.push(`Too spicy for your preference.`);
+    }
+    if (intent.time_constraint) {
+      const totalTime = recipe.prep_time_minutes + recipe.cook_time_minutes;
+      if (totalTime > intent.time_constraint) {
+        excluded_reasons.push(`Exceeds your time limit of ${intent.time_constraint} mins.`);
+      }
+    }
+    if (intent.no_chopping && recipe.prep_time_minutes > 5) {
+      excluded_reasons.push("Requires chopping/prep, which you wanted to avoid.");
+    }
+    if (intent.no_dairy && recipe.contains_dairy) excluded_reasons.push("Contains dairy.");
+    if (intent.no_paneer && recipe.contains_paneer) excluded_reasons.push("Contains paneer.");
+    if (intent.no_egg && recipe.contains_egg) excluded_reasons.push("Contains egg.");
+    if (intent.allergen_tags?.some(tag => recipe.allergen_tags.includes(tag))) {
+      excluded_reasons.push("Contains allergen(s) you want to avoid.");
+    }
+    if (intent.avoid_if?.some(tag => recipe.avoid_if.includes(tag))) {
+      excluded_reasons.push("Matches an avoid condition.");
+    }
+    if (intent.seasonality && !intent.seasonality.some(s => recipe.seasonality.includes(s))) {
+      excluded_reasons.push("Not in season.");
+    }
+
+    return { passes: excluded_reasons.length === 0, reasons: excluded_reasons };
+  }
 
   if (intent.package_preference) {
     applied_filters.push({
@@ -225,116 +238,141 @@ export function getCookKitRecommendation(
 
   // --- REFACTORED CANDIDATE SCORING LOGIC ---
 
-for (const recipe of candidates) {
-  const excluded_reasons: string[] = [];
-  let score = 0;
-  const reasons: string[] = [];
+  // --- REFACTORED CANDIDATE SCORING LOGIC ---
 
-  // --- HARD FILTERS FIRST ---
-  if (intent.veg_preference && recipe.veg_nonveg !== intent.veg_preference) {
-    excluded_reasons.push(`Does not match your ${intent.veg_preference} preference.`);
-  }
-  if (intent.jain && !recipe.diet_tags.includes("jain")) {
-    excluded_reasons.push(`Not Jain-friendly (may contain onion/garlic/roots).`);
-  }
-  if (intent.exclude_spicy && recipe.spice_level === "spicy") {
-    excluded_reasons.push(`Too spicy for your preference.`);
-  }
-  if (intent.time_constraint) {
-    const totalTime = recipe.prep_time_minutes + recipe.cook_time_minutes;
-    if (totalTime > intent.time_constraint) {
-      excluded_reasons.push(`Exceeds your time limit of ${intent.time_constraint} mins.`);
+  for (const recipe of candidates) {
+    const { passes, reasons: excluded_reasons } = passesHardFilters(recipe, intent);
+
+    if (!passes) {
+      excluded.push({ recipe, excluded_reasons });
+      continue;
+    }
+
+    let score = 0;
+    const reasons: string[] = [];
+
+    // --- SOFT SCORING ---
+    if (intent.high_protein) {
+      score += recipe.protein_density === "high" ? 50 : recipe.protein_density === "medium" ? 15 : -20;
+      reasons.push(`Protein match: ${recipe.protein_density}`);
+    }
+    if (intent.low_oil) {
+      score += recipe.oil_level === "low" ? 50 : recipe.oil_level === "medium" ? 10 : -60;
+    }
+    if (intent.light_meal) {
+      score += recipe.calorie_density === "light" ? 40 : recipe.calorie_density === "medium" ? 10 : -30;
+    }
+    if (intent.sensitive_stomach) {
+      if (recipe.spice_level === "mild") score += 20;
+      if (recipe.oil_level === "low") score += 20;
+      if (recipe.calorie_density === "light") score += 20;
+      reasons.push("Suitable for sensitive stomach");
+    }
+    if (intent.spice_level && recipe.spice_level === intent.spice_level) {
+      score += 25;
+      reasons.push(`Exact spice level match: ${intent.spice_level}`);
+    }
+    if (intent.health_preference) {
+      if (intent.health_preference === "healthy") {
+        score += recipe.health_positioning === "healthy" || recipe.calorie_density === "light" ? 35 : recipe.health_positioning === "balanced" ? 10 : -20;
+      } else if (intent.health_preference === "indulgent") {
+        score += recipe.health_positioning === "indulgent" || recipe.calorie_density === "high" ? 30 : -10;
+      }
+    }
+    if (intent.comfort_food && recipe.comfort_food) score += 45;
+    if (intent.novelty && (recipe.package === "aaj_kuch_naya" || recipe.typical_user_intents.includes("something different"))) score += 45;
+    if (intent.family_friendly && recipe.kid_friendly) score += 30;
+    if (intent.best_sellers && recipe.best_seller) score += 40;
+
+    // --- VAGUE QUERY BOOST ---
+    if (intent.is_vague) {
+      score += recipe.best_seller ? 100 : 0;
+      score += recipe.comfort_food ? 90 : 0;
+      score += recipe.veg_nonveg === "veg" ? 80 : 0;
+      score += recipe.kid_friendly ? 50 : 0;
+      score += recipe.weekday_suitable ? 40 : 0;
+      score += recipe.difficulty_level === "easy" ? 30 : 0;
+      reasons.push("Safe, popular choice for vague query");
+      failure_type = "vague_query";
+    }
+
+    if (score > 0 || intent.is_vague) {
+      matches.push({ recipe, score, reasons });
     }
   }
-  if (intent.no_chopping && recipe.prep_time_minutes > 5) {
-    excluded_reasons.push("Requires chopping/prep, which you wanted to avoid.");
-  }
-  if (intent.no_dairy && recipe.contains_dairy) excluded_reasons.push("Contains dairy.");
-  if (intent.no_paneer && recipe.contains_paneer) excluded_reasons.push("Contains paneer.");
-  if (intent.no_egg && recipe.contains_egg) excluded_reasons.push("Contains egg.");
-  if (intent.allergen_tags?.some(tag => recipe.allergen_tags.includes(tag))) {
-    excluded_reasons.push("Contains allergen(s) you want to avoid.");
-  }
-  if (intent.avoid_if?.some(tag => recipe.avoid_if.includes(tag))) {
-    excluded_reasons.push("Matches an avoid condition.");
-  }
-  if (intent.seasonality && !intent.seasonality.some(s => recipe.seasonality.includes(s))) {
-    excluded_reasons.push("Not in season.");
-  }
 
-  if (excluded_reasons.length > 0) {
-    excluded.push({ recipe, excluded_reasons });
-    continue;
-  }
-
-  // --- SOFT SCORING ---
-  if (intent.high_protein) {
-    score += recipe.protein_density === "high" ? 50 : recipe.protein_density === "medium" ? 15 : -20;
-    reasons.push(`Protein match: ${recipe.protein_density}`);
-  }
-  if (intent.low_oil) {
-    score += recipe.oil_level === "low" ? 50 : recipe.oil_level === "medium" ? 10 : -60;
-  }
-  if (intent.light_meal) {
-    score += recipe.calorie_density === "light" ? 40 : recipe.calorie_density === "medium" ? 10 : -30;
-  }
-  if (intent.sensitive_stomach) {
-    if (recipe.spice_level === "mild") score += 20;
-    if (recipe.oil_level === "low") score += 20;
-    if (recipe.calorie_density === "light") score += 20;
-    reasons.push("Suitable for sensitive stomach");
-  }
-  if (intent.spice_level && recipe.spice_level === intent.spice_level) {
-    score += 25;
-    reasons.push(`Exact spice level match: ${intent.spice_level}`);
-  }
-  if (intent.health_preference) {
-    if (intent.health_preference === "healthy") {
-      score += recipe.health_positioning === "healthy" || recipe.calorie_density === "light" ? 35 : recipe.health_positioning === "balanced" ? 10 : -20;
-    } else if (intent.health_preference === "indulgent") {
-      score += recipe.health_positioning === "indulgent" || recipe.calorie_density === "high" ? 30 : -10;
+  // --- CONTRADICTORY CONSTRAINT CHECKS ---
+  if (intent.high_protein && intent.veg_preference === "veg" && intent.no_paneer) {
+    const hasHighProteinVeg = matches.some(m => m.recipe.protein_density === "high" && m.recipe.veg_nonveg === "veg");
+    if (!hasHighProteinVeg) {
+      failure_type = "contradictory_constraints";
+      explanation = "High-protein vegetarian without paneer is very limited. Showing best alternatives.";
+      followup_question = "Include paneer for higher protein, or keep strictly no-paneer?";
+      fallback_used = true;
     }
   }
-  if (intent.comfort_food && recipe.comfort_food) score += 45;
-  if (intent.novelty && (recipe.package === "aaj_kuch_naya" || recipe.typical_user_intents.includes("something different"))) score += 45;
-  if (intent.family_friendly && recipe.kid_friendly) score += 30;
-  if (intent.best_sellers && recipe.best_seller) score += 40;
-
-  // --- VAGUE QUERY BOOST ---
-  if (intent.is_vague) {
-    score += recipe.best_seller ? 100 : 0;
-    score += recipe.comfort_food ? 90 : 0;
-    score += recipe.veg_nonveg === "veg" ? 80 : 0;
-    score += recipe.kid_friendly ? 50 : 0;
-    score += recipe.weekday_suitable ? 40 : 0;
-    score += recipe.difficulty_level === "easy" ? 30 : 0;
-    reasons.push("Safe, popular choice for vague query");
-    failure_type = "vague_query";
-  }
-
-  if (score > 0 || intent.is_vague) {
-    matches.push({ recipe, score, reasons });
-  }
-}
-
-// --- CONTRADICTORY CONSTRAINT CHECKS ---
-if (intent.high_protein && intent.veg_preference === "veg" && intent.no_paneer) {
-  const hasHighProteinVeg = matches.some(m => m.recipe.protein_density === "high" && m.recipe.veg_nonveg === "veg");
-  if (!hasHighProteinVeg) {
-    failure_type = "contradictory_constraints";
-    explanation = "High-protein vegetarian without paneer is very limited. Showing best alternatives.";
-    followup_question = "Include paneer for higher protein, or keep strictly no-paneer?";
+  else if (intent.time_constraint && intent.time_constraint < 10) {
+    failure_type = "impossible_time";
+    explanation = "No fresh-cooked dish can be ready in under 10 minutes. Here are our fastest realistic options that respect your other preferences:";
     fallback_used = true;
+    const quickOptions = recipes
+      .filter(r => {
+        const tempIntent = { ...intent, time_constraint: undefined }; // Relax time only
+        return passesHardFilters(r, tempIntent).passes;
+      }).sort((a, b) => (a.prep_time_minutes + a.cook_time_minutes) - (b.prep_time_minutes + b.cook_time_minutes))
+      .slice(0, 5);
+    quickOptions.forEach(r => {
+      matches.push({
+        recipe: r,
+        score: 15,
+        reasons: [`Fastest available: ready in ${r.prep_time_minutes + r.cook_time_minutes} minutes`]
+      });
+    });
+  } else if (intent.no_chopping && intent.time_constraint && intent.time_constraint < 15) {
+    failure_type = "impossible_time";
+    explanation = "No chopping + under 15 mins is tough for proper meals. Showing minimal-prep quick options that respect your other preferences:";
+    followup_question = "Relax time limit or allow some prep?";
+    fallback_used = true;
+    const quickOptions = recipes
+      .filter(r => {
+        const tempIntent = { ...intent, time_constraint: undefined, no_chopping: false }; // Relax both
+        return passesHardFilters(r, tempIntent).passes;
+      }).sort((a, b) => (a.prep_time_minutes + a.cook_time_minutes) - (b.prep_time_minutes + b.cook_time_minutes))
+      .slice(0, 5);
+    quickOptions.forEach(r => {
+      matches.push({
+        recipe: r,
+        score: 15,
+        reasons: [`Minimal-prep quick option: ready in ${r.prep_time_minutes + r.cook_time_minutes} minutes`]
+      });
+    });
   }
-}
 
-if (matches.length === 0) {
-  fallback_used = true;
-  explanation = "No matches found for your exact criteria. Showing safe, popular alternatives:";
-  const safeFallback = recipes.filter(r => r.best_seller || r.comfort_food).slice(0, 5);
-  safeFallback.forEach(r => matches.push({ recipe: r, score: 10, reasons: ["Popular and safe fallback"] }));
-}
 
+  if (matches.length === 0) {
+    fallback_used = true;
+    explanation = "No perfect matches after applying your preferences. Showing safe, popular alternatives that respect ALL your hard constraints:";
+
+    const safeFallback = recipes
+      .filter(r => r.best_seller || r.comfort_food)
+      .filter(r => passesHardFilters(r, intent).passes)
+      .sort((a, b) => (b.best_seller ? 1 : 0) - (a.best_seller ? 1 : 0))
+      .slice(0, 5);
+
+    safeFallback.forEach(r =>
+      matches.push({
+        recipe: r,
+        score: 10,
+        reasons: ["Popular and safe fallback (respects all your hard preferences)"],
+      })
+    );
+
+    if (safeFallback.length === 0) {
+      explanation = "No alternatives found even in fallbacks — your constraints are too strict.";
+      // Optionally clear matches if nothing works
+      matches.length = 0;
+    }
+  }
 
   matches.sort((a, b) => b.score - a.score);
 
@@ -373,26 +411,7 @@ if (matches.length === 0) {
     followup_question = "Prioritize light or indulgent?";
   }
 
-  else if (intent.time_constraint && intent.time_constraint < 10) {
-    failure_type = "impossible_time";
-    explanation = "No fresh-cooked dish can be ready in under 10 minutes. Here are our fastest realistic options:";
-    fallback_used = true;
-    const quickOptions = recipes
-      .sort((a, b) => (a.prep_time_minutes + a.cook_time_minutes) - (b.prep_time_minutes + b.cook_time_minutes))
-      .slice(0, 5);
-    quickOptions.forEach(r => {
-      matches.push({
-        recipe: r,
-        score: 15,
-        reasons: [`Fastest available: ready in ${r.prep_time_minutes + r.cook_time_minutes} minutes`]
-      });
-    });
-  } else if (intent.no_chopping && intent.time_constraint && intent.time_constraint < 15) {
-    failure_type = "impossible_time";
-    explanation = "No chopping + under 15 mins is tough for proper meals. Showing minimal-prep quick options:";
-    followup_question = "Relax time limit or allow some prep?";
-    fallback_used = true;
-  }
+
 
   else if (intent.protein_type && !matches.some(m => intent.protein_type?.some(p => m.recipe.primary_protein === p || m.recipe.secondary_protein === p))) {
     failure_type = "unavailable_protein";
@@ -404,21 +423,7 @@ if (matches.length === 0) {
     followup_question = "Stick to Jain, or include non-Jain veg?";
   }
 
-  else if (matches.length === 0) {
-    fallback_used = true;
-    explanation = "No dishes matched all your criteria. Showing our most loved comfort options instead:";
-    const safeFallback = recipes
-      .filter(r => r.best_seller || r.comfort_food)
-      .sort((a, b) => (b.best_seller ? 1 : 0) - (a.best_seller ? 1 : 0))
-      .slice(0, 5);
-    safeFallback.forEach(r => {
-      matches.push({
-        recipe: r,
-        score: 10,
-        reasons: ["Popular and safe choice (closest available match)"]
-      });
-    });
-  }
+
 
   else if (intent.is_vague) {
     explanation = "You seem tired of deciding — here are our most popular, safe, and comforting options that work for almost everyone:";
