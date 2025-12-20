@@ -136,6 +136,9 @@ export interface DetectedIntent {
 }
 
 // === Supporting Interfaces ===
+// src/types.ts
+// ... (keep all your existing primitive types, Recipe, DetectedIntent, etc.)
+
 export interface RecipeMatch {
   recipe: Recipe;
   score: number;
@@ -152,16 +155,21 @@ export interface AppliedFilter {
   value: string;
   type: "hard" | "soft";
 }
+
+// NEW: For early off-topic responses
+export interface OffTopicResult {
+  off_topic: true;
+  response: string;
+}
+
 export interface RecommendationResult {
   decision: "recommendation" | "clarification" | "fallback";
-
   matches: RecipeMatch[];
   excluded: ExcludedRecipe[];
   intent: DetectedIntent;
   applied_filters: AppliedFilter[];
   fallback_used: boolean;
   explanation: string;
-
   failure_type:
     | "contradictory_constraints"
     | "impossible_time"
@@ -170,10 +178,8 @@ export interface RecommendationResult {
     | "vague_query"
     | "off_topic"
     | null;
-
   followup_question?: string;
 
-  // 👇 ADD THIS
   debug?: {
     intent: DetectedIntent;
     applied_filters: AppliedFilter[];
@@ -186,3 +192,6 @@ export interface RecommendationResult {
     decision_reason: string;
   };
 }
+
+// Union type for the service
+export type GetRecommendationResult = RecommendationResult | OffTopicResult;
