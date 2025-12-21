@@ -3,9 +3,6 @@
 // Includes detection for no_egg, advanced constraints, and future-ready patterns
 // Modified according to the document: expanded regex with phrases from all relevant categories (A-L)
 // Added new fields: meal_type, day_type, people_count, multi_meal, no_chopping, light_meal, jain, sensitive_stomach
-// Fixed meal_type detection: separated lunch and dinner phrases correctly to avoid overlap
-// Fixed typos: "abi" to "abhi", "chaiye" to "chahiye", removed "el baar" typo
-// Added missing phrases from document: "cook once kal lunch bhi ho jaaye" for multi_meal, "single person meal", "one person dinner" for solo, "dinner for two" for couple, "family meals", "whole family" for family (already partial), "heavy dinner nahi chahiye" context handled in health/light_meal
 
 import { DetectedIntent } from '../types';
 
@@ -41,10 +38,10 @@ export function detectIntent(userMessage: string): DetectedIntent {
   if (/\b(mutton|goat|lamb)\b/.test(message)) proteinTypes.add("mutton");
   if (/\b(egg|anda)\b/.test(message)) proteinTypes.add("egg");
 
-  // Will add paneer later only if positively wanted
   if (proteinTypes.size > 0) {
     intent.protein_type = Array.from(proteinTypes);
   }
+
   // 4. Spice level
   if (/\b(spicy|teekha|hot|mirchi|masaledar|proper spicy|chatpata|south indian spicy vibes|teekha khana)\b/.test(message) && !/\b(not|no|kam|less|mild)\b/.test(message)) {
     intent.spice_level = "spicy";
@@ -85,20 +82,18 @@ export function detectIntent(userMessage: string): DetectedIntent {
   if (/\b(high protein|protein rich|protein wala|more protein|high protein dinner chahiye|protein heavy food suggest karo|gym ke baad kya khau|i want something healthy but filling|protein but not oily|post workout meal no junk|protein chahiye but simple)\b/.test(message)) intent.high_protein = true;
   if (/\b(no dairy|dairy free|without milk|no milk|no cream|lactose|no dairy please|milk products avoid|lactose intolerant|kuch bhi chalega bas paneer mat ho|dairy-free options)\b/.test(message)) intent.no_dairy = true;
 
-  // PANEER: Separate positive vs negative detection
-  const hasPaneerMention = /\bpaneer\b/.test(message);
-  const hasPaneerNegation = /\b(no paneer|without paneer|not paneer|but not paneer|paneer nahi|paneer mat|avoid paneer|no cottage cheese|bas paneer mat|paneer avoid|paneer exclude|paneer mat ho)\b/.test(message);
+  // PANEER: Separate positive vs negative detection — now handles "panner" misspellings
+  const hasPaneerMention = /\b(paneer|panner)\b/i.test(message);
+  const hasPaneerNegation = /\b(no paneer|without paneer|not paneer|but not paneer|paneer nahi|paneer mat|avoid paneer|no cottage cheese|bas paneer mat|paneer avoid|paneer exclude|paneer mat ho|no panner|not panner|without panner|panner nahi|panner mat|but not panner|avoid panner)\b/i.test(message);
 
   if (hasPaneerNegation) {
     intent.no_paneer = true;
-    // Ensure it's NOT added to protein_type
     if (intent.protein_type) {
-      intent.protein_type = intent.protein_type.filter(p => p !== "paneer");
+      intent.protein_type = intent.protein_type.filter(p => p.toLowerCase() !== "paneer");
     }
-  } else if (hasPaneerMention) {
-    // Positive mention → user wants paneer
+  } else if (hasPaneerMention && !hasPaneerNegation) {
     if (!intent.protein_type) intent.protein_type = [];
-    if (!intent.protein_type.includes("paneer")) {
+    if (!intent.protein_type.some(p => p.toLowerCase() === "paneer")) {
       intent.protein_type.push("paneer");
     }
   }
@@ -125,10 +120,8 @@ export function detectIntent(userMessage: string): DetectedIntent {
   if (/\b(best seller|popular|top|favorite|bestseller|most ordered|everyone orders|most popular kya hai|sab log kya lete hai|safe first order kya hoga|kids ke liye best|repeat customers kya order karte hai)\b/.test(message)) intent.best_sellers = true;
 
   // 11. Vague / Decision fatigue
-  // In the vague query regex block
   const vagueMatch = /\b(kya banau|kya khana|dont ask questions|just recommend|dont ask|no questions|pick for me|surprise me|random|anything|whatever|kuch bhi|decide karo|dimag nahi|brain dead|tired|exhausted)\b/i.test(message);
 
-  // Only vague if NO strong constraints detected (expanded for better accuracy)
   intent.is_vague =
     vagueMatch &&
     !intent.time_constraint &&
@@ -166,7 +159,7 @@ export function detectIntent(userMessage: string): DetectedIntent {
   } else if (/\b(couple|2 log|two|me and wife|hum dono|date night|couple dinner ideas|date night at home|hum dono ke liye kuch|2 ke liye kya banaun|2 people|dinner for two|me and wife dinner|hum dono ke liye kuch)\b/.test(message)) {
     intent.people_count = 2;
   } else if (/\b(family|parivar|kids|children|bachche|whole family|family meals|4 log|family ke liye kya banaun)\b/.test(message)) {
-    intent.people_count = 4; // minimum family size (used as lower bound)
+    intent.people_count = 4;
   }
 
   // 15. New: multi_meal
