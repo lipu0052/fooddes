@@ -17,6 +17,12 @@ const conversationState = new Map<string, {
   stage: 'initial' | 'narrowing' | 'commitment' | 'capture_name' | 'soft_close' | 'closed';
 }>();
 
+function getRecipeByName(nameSubstring: string): Recipe | null {
+  return recipes.find(r =>
+    r.name.toLowerCase().includes(nameSubstring.toLowerCase())
+  ) || null;
+}
+
 function getPendingRecipe(pendingId?: string): Recipe | null {
   if (!pendingId) return null;
   return recipes.find(r => r.id === pendingId) || null;
@@ -30,7 +36,7 @@ router.post('/recommend', (req, res) => {
   }
 
   try {
-    const result = getRecommendation(message);
+    const result = getRecommendation(message); // Returns GetRecommendationResult (RecommendationResult | OffTopicResult)
 
     /* =========================================================
        DEBUG MODE (Phase 0 testing)
@@ -46,6 +52,7 @@ router.post('/recommend', (req, res) => {
         });
       }
 
+      // Normal recommendation debug output
       return res.json({
         success: true,
         phase: 'phase_0',
@@ -69,7 +76,7 @@ router.post('/recommend', (req, res) => {
     }
 
     /* =========================================================
-       EARLY OFF-TOPIC HANDLING
+       EARLY OFF-TOPIC HANDLING (Client's Phase 0 Requirement)
        ========================================================= */
     if ('off_topic' in result) {
       return res.json({
@@ -89,16 +96,20 @@ router.post('/recommend', (req, res) => {
       });
     }
 
-    const recommenderResult = result;
+    /* =========================================================
+       NORMAL FOOD RECOMMENDATION PATH
+       TypeScript now knows result is RecommendationResult (safe narrowing)
+       ========================================================= */
+    const recommenderResult = result; // No cast needed — no red underline!
 
-    // Initialize conversation state
+    // Initialize conversation state if new user
     if (!conversationState.has(userId)) {
       conversationState.set(userId, { userId, stage: 'initial' });
     }
 
     const state = conversationState.get(userId)!;
 
-    // Merge intents across conversation
+    // Merge previous and new intent
     const mergedIntent: DetectedIntent = {
       ...state.lastIntent,
       ...recommenderResult.intent,
@@ -110,79 +121,76 @@ router.post('/recommend', (req, res) => {
     let conversationalResponse = '';
     let followupQuestion: string | null = null;
     let softCloseOptions: string[] = [];
+
     const escapeOptions = ['Show full menu', 'Show bestsellers', 'Reset'];
 
     const peopleCount = mergedIntent.people_count || 2;
     let currentRecipe = getPendingRecipe(state.pendingRecipeId);
 
-    /* ---------- HANDLE RECOMMENDER CLARIFICATION FIRST ---------- */
-    if (recommenderResult.followup_question && state.stage === 'initial') {
-      conversationalResponse = recommenderResult.explanation;
-      followupQuestion = recommenderResult.followup_question;
-      // Stay in initial stage until resolved
+    /* ---------- TIME / EFFORT CATEGORY ---------- */
+    const isTimeEffort =
+      mergedIntent.time_constraint !== undefined ||
+      mergedIntent.no_chopping === true ||
+      mergedIntent.multi_meal === true;
+
+    if (isTimeEffort && state.stage === 'initial') {
+      if (mergedIntent.no_chopping || mergedIntent.time_constraint) {
+        currentRecipe = getRecipeByName('khichdi') || recommenderResult.matches[0]?.recipe || null;
+      } else if (mergedIntent.multi_meal) {
+        currentRecipe = getRecipeByName('dal makhani') || getRecipeByName('rajma') || null;
+      }
+
+      if (currentRecipe) {
+        const totalTime = currentRecipe.prep_time_minutes + currentRecipe.cook_time_minutes;
+        conversationalResponse = `If you want something genuinely easy, I’d suggest ${currentRecipe.name} — ready in about ${totalTime} mins.\n\nNo chopping, very low effort.`;
+        followupQuestion = mergedIntent.veg_preference ? null : 'Veg works, or do you want chicken instead?';
+        state.pendingRecipeId = currentRecipe.id;
+        state.stage = 'narrowing';
+      }
     }
 
-    /* ---------- TIME / EFFORT CONSTRAINTS ---------- */
-    else if (
-      (mergedIntent.time_constraint !== undefined || mergedIntent.no_chopping || mergedIntent.multi_meal) &&
-      state.stage === 'initial' &&
-      recommenderResult.matches.length > 0
-    ) {
-      currentRecipe = recommenderResult.matches[0].recipe;
-      const totalTime = currentRecipe.prep_time_minutes + currentRecipe.cook_time_minutes;
+    /* ---------- DECISION FATIGUE CATEGORY ---------- */
+    else if (mergedIntent.is_vague === true && state.stage === 'initial') {
+      currentRecipe = getRecipeByName('butter chicken') || getRecipeByName('rajma') || getRecipeByName('dal makhani') || null;
 
-      conversationalResponse = `Got it — you're looking for something quick and easy! I'd go with **${currentRecipe.name}**. It's ready in about ${totalTime} minutes and needs minimal effort.`;
-
-      followupQuestion = mergedIntent.veg_preference ? null : 'Does veg work for you, or would you like non-veg?';
-      state.pendingRecipeId = currentRecipe.id;
-      state.stage = 'narrowing';
+      if (currentRecipe) {
+        conversationalResponse = `Totally get it 😄 If you don’t want to think, ${currentRecipe.name} is a safe, comforting choice.`;
+        followupQuestion = 'Veg or non-veg?';
+        state.pendingRecipeId = currentRecipe.id;
+        state.stage = 'narrowing';
+      }
     }
 
-    /* ---------- DECISION FATIGUE / VAGUE QUERY ---------- */
-    else if (mergedIntent.is_vague && state.stage === 'initial' && recommenderResult.matches.length > 0) {
-      currentRecipe = recommenderResult.matches[0].recipe;
-
-      conversationalResponse = `Totally understand — sometimes you just don't want to decide 😅\n\nLet me make it simple: **${currentRecipe.name}** is one of our most popular, comforting dishes that almost everyone loves.`;
-
-      followupQuestion = 'Veg or non-veg preference?';
-      state.pendingRecipeId = currentRecipe.id;
-      state.stage = 'narrowing';
-    }
-
-    /* ---------- CONVERSATION CONTINUATION (NARROWING → COMMITMENT → etc.) ---------- */
+    /* ---------- CONVERSATION CONTINUATION ---------- */
     else if (currentRecipe) {
       if (state.stage === 'narrowing' && mergedIntent.veg_preference !== undefined) {
-        conversationalResponse = `Perfect! Shall I prepare **${currentRecipe.name}** for ${peopleCount} people?`;
+        conversationalResponse = `Perfect. Shall I set this up for ${peopleCount} people?`;
         state.stage = 'commitment';
-      } else if (state.stage === 'commitment' && /yes|ok|haan|sure|han|thik|chalo/i.test(message.toLowerCase())) {
-        conversationalResponse = `Awesome! 👍 Just one thing — what name should I save this order under?`;
+      } else if (state.stage === 'commitment' && /yes|ok|haan|sure/i.test(message)) {
+        conversationalResponse = `Great 👍 What name should I save this under?`;
         state.stage = 'capture_name';
       } else if (state.stage === 'capture_name') {
         state.name = message.trim();
-        conversationalResponse = `Thanks ${state.name}! 😊 Would you like me to add **${currentRecipe.name}** to your cart or send the details on WhatsApp?`;
+        conversationalResponse = `Thanks ${state.name}. Want me to add this to cart or send it on WhatsApp?`;
         softCloseOptions = ['Add to cart', 'Send on WhatsApp'];
         state.stage = 'soft_close';
       } else if (state.stage === 'soft_close') {
-        conversationalResponse = `All done! Enjoy your meal 😋`;
+        conversationalResponse = `All set 😊`;
         state.stage = 'closed';
       }
     }
 
-    /* ---------- DEFAULT NATURAL RESPONSE ---------- */
+    /* ---------- DEFAULT FALLBACK TEXT ---------- */
     if (conversationalResponse === '') {
-      if (state.stage === 'initial') {
-        conversationalResponse = `Got it! ${recommenderResult.explanation}`;
-      } else {
-        conversationalResponse = recommenderResult.explanation;
-      }
+      conversationalResponse = recommenderResult.explanation || 'Here are some popular comfort options people love:';
     }
 
-    /* ---------- FINAL DECISION TYPE ---------- */
+    /* ---------- DECISION TYPE ---------- */
     const decision = recommenderResult.followup_question
       ? 'clarification'
       : recommenderResult.fallback_used
-        ? 'fallback'
-        : 'recommendation';
+      ? 'fallback'
+      : 'recommendation';
 
     /* =========================================================
        FINAL RESPONSE
@@ -218,6 +226,7 @@ router.post('/recommend', (req, res) => {
 });
 
 /* ===================== OTHER ROUTES ===================== */
+
 router.post('/reset', (req, res) => {
   const { userId = 'anon' } = req.body;
   conversationState.delete(userId);

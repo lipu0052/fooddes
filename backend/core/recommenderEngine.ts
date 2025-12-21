@@ -13,6 +13,22 @@ import {
 } from '../types';
 import { recipes } from '../data/recipes';
 
+function isFoodRelatedMessage(message: string): boolean {
+  const foodKeywords = ["meal", "dish", "eat", "food", "recipe", "breakfast", "lunch", "dinner", "snack"];
+  const lowerMsg = message.toLowerCase();
+
+  // If message contains food-related keywords → food
+  if (foodKeywords.some(keyword => lowerMsg.includes(keyword))) return true;
+
+  // If message starts with question words and has no food keywords → not food
+  const questionWords = ["what", "who", "how", "when", "where", "why"];
+  if (questionWords.some(q => lowerMsg.startsWith(q))) return false;
+
+  // Default fallback → treat as vague food request
+  return true;
+}
+
+
 
 export function getCookKitRecommendation(
   intent: DetectedIntent
@@ -25,6 +41,31 @@ export function getCookKitRecommendation(
   let followup_question: string | undefined = undefined;
   let fallback_used = false;
   let explanation = "";
+  // Early semantic check for non-food inputs
+  if (!isFoodRelatedMessage(intent.raw_input || "")) {
+  return {
+    decision: "fallback",
+    matches: [],
+    excluded: [],
+    intent,
+    applied_filters: [],
+    fallback_used: true,
+    explanation: "Hmm, that doesn't look like a food request. Can you tell me what you want to eat?",
+    failure_type: "off_topic",
+    followup_question: undefined,
+    debug: {
+      intent,
+      applied_filters: [],
+      excluded_count: 0,
+      match_scores: [],
+      decision_reason: "Input not recognized as food-related"
+    }
+  };
+}
+
+
+
+
 
   // === ADD THIS FUNCTION HERE ===
   function passesHardFilters(recipe: Recipe, intent: DetectedIntent): { passes: boolean; reasons: string[] } {
@@ -486,20 +527,21 @@ export function getCookKitRecommendation(
     followup_question,
 
     debug: {
-      intent,
-      applied_filters,
+      intent: intent as DetectedIntent,
+      applied_filters: applied_filters,
       excluded_count: excluded.length,
       match_scores: matches.slice(0, 5).map(m => ({
         recipe_id: m.recipe.id,
         score: m.score,
-        reasons: m.reasons
-      })),
+        reasons: m.reasons,
+      })) as { recipe_id: string; score: number; reasons: string[] }[],
       decision_reason: followup_question
         ? "Clarification required due to conflicting or incomplete intent"
         : fallback_used
           ? "Fallback triggered because strict constraints reduced viable matches"
           : "Enough high-confidence matches found"
     }
+
   };
 
 

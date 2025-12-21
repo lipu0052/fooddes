@@ -7,46 +7,41 @@ export function getRecommendation(message: string): GetRecommendationResult {
   const trimmed = message.trim();
   const lower = trimmed.toLowerCase();
 
-  // === PHASE 0: ROBUST FOOD vs NON-FOOD DETECTION ===
-
-  // Expanded food-related keywords — these indicate the user is thinking about eating/cooking
-const foodRelatedKeywords = /\b(khana|food|meal|dish|eat|kha|khaana|dinner|lunch|breakfast|snack|recipe|banau|banao|cook|pakana|pakao|suggest|batao|chahiye|idea|chicken|dal|paneer|veg|nonveg|non-veg|spicy|mild|protein|masala|roti|rice|sabzi|gravy|curry|rajma|chole|butter chicken|hungry|bhook|bhukh|pet|stomach|mood|craving|mana kar raha)\b/gi;
-
-  const hasFoodContext = foodRelatedKeywords.test(lower);
-
-  // Known explicit off-topic patterns (pricing, about us, etc.)
+  // === PHASE 0: EARLY OFF-TOPIC DETECTION ===
   const offTopicPatterns = [
     "what is cook kit", "cook kit kya hai", "cookkit", "cook kit hai",
     "what is this", "ye kya hai", "how does this work", "kaise kaam karta",
     "pricing", "price", "kitna", "cost", "subscription", "plan",
     "who are you", "tum kaun", "about", "team", "company",
-    "contact", "support", "delivery", "order", "cancel", "refund",
-    "menu dekhao", "full menu", "all options", "sab kuch dikhao"
+    "contact", "support", "delivery", "order", "cancel", "refund"
   ];
 
-  const matchesOffTopicPattern = offTopicPatterns.some(p => lower.includes(p));
+  const startsWithQuestion = /^(what|kya|how|kaise|who|kaun|tell me|batavo|show menu)/i.test(trimmed);
 
-  // Questions that start with what/how/who etc.
-  const startsWithQuestion = /^(what|kya|kaise|how|who|kaun|tell me|batavo|show|dikhao)/i.test(trimmed);
+const foodKeywords = /\b(khana|food|dinner|lunch|recipe|banau|banao|chicken|dal|veg|nonveg|spicy|mild|protein|cook|suggest|idea|chahiye|batao|quick|easy|meal|dish|eat|what to eat)\b/i;
+  const hasFoodContext = foodKeywords.test(lower);
 
-  // Final off-topic decision:
-  // - Explicit off-topic phrase → off-topic
-  // - OR it's a question AND has ZERO food context → off-topic
-  // Otherwise → treat as food-related (even if vague like "meal" or "dinner")
-  const isOffTopic = matchesOffTopicPattern ||
+  const isOffTopic =
+    offTopicPatterns.some(p => lower.includes(p)) ||
     (startsWithQuestion && !hasFoodContext);
 
   if (isOffTopic) {
     return {
       off_topic: true,
-      response: "Hey, that doesn't sound like you're thinking about food right now 😊 I'm your cooking buddy — tell me what you'd like to eat, and I'll suggest something perfect!"
+      response: "Hey, that doesn't sound like a recipe or food request right now 😊 I'm here to help you decide what to cook — just tell me what you're in the mood for!"
     };
   }
+  const vaguePatterns = /\b(kya banau|kya khana|dont ask questions|just recommend|dont ask|no questions|pick for me|surprise me|random|anything|whatever|kuch bhi|decide karo|dimag nahi|brain dead|tired|exhausted|meal|dish|eat|what to eat)\b/i;
+const vagueMatch = vaguePatterns.test(lower);
 
-  // === IF FOOD-RELATED BUT VERY VAGUE → Optional safe clarification (handled later in decisionEngine) ===
-  // We now let it pass through to intent detection and recommender
-  // The recommender already handles is_vague = true with safe popular picks
+if (!isOffTopic && vagueMatch) {
+  return {
+    off_topic: true,
+    response: "Hmm, not sure what you want to eat 😅 Can you tell me if you want something light, spicy, or healthy?"
+  };
+}
 
+  // === NORMAL FOOD PATH ===
   const intent = detectIntent(message);
   return getCookKitRecommendation(intent);
 }
