@@ -9,6 +9,7 @@ export function detectIntent(userMessage: string): DetectedIntent {
   const intent: DetectedIntent = {
     is_vague: false,
   };
+  // Generic food/eating mention (to catch "i want to eat", "food", "meal", etc.)
 
   // 1. Package Preference
   if (/\b(ghar ka khana|home style|comfort food|simple indian food|no experiment|routine|safe option|daily|roz ka|ghar jaisa)\b/.test(message)) {
@@ -21,7 +22,7 @@ export function detectIntent(userMessage: string): DetectedIntent {
   if (intent.jain) intent.veg_preference = "veg";
 
   if (/\b(veg|vegetarian|pure veg|jain food|no nonveg|no onion no garlic|satvik)\b/.test(message) &&
-      !/\b(non.?veg|chicken|fish|mutton|meat|prawn|egg|seafood|nonveg|non-veg)\b/.test(message)) {
+    !/\b(non.?veg|chicken|fish|mutton|meat|prawn|egg|seafood|nonveg|non-veg)\b/.test(message)) {
     intent.veg_preference = "veg";
   } else if (/\b(non.?veg|chicken|fish|mutton|prawn|meat|egg|seafood|nonveg|non-veg)\b/.test(message)) {
     intent.veg_preference = "non_veg";
@@ -118,6 +119,10 @@ export function detectIntent(userMessage: string): DetectedIntent {
   const vagueMatch = /\b(kya banau|kya khana|kya bana du|dont ask questions|just recommend|pick for me|surprise me|random|anything|kuch bhi|decide karo|dimag nahi|tired|exhausted|bored|bore ho gaya|kuch bhi chalega|kuch bhi ho|koi bhi)\b/i.test(message);
   intent.is_vague = vagueMatch;
 
+ const genericFoodWords = /\b(eat|want to eat|eating|i want to eat|khana hai|khana chahiye|kuch khana|kuch khaana|meal|food|khana|khaana|khaoge|khilao|kha lenge|khana banane ka mood|khana banau|khana bana du|hungry|bhuk lagi|bhukh lagi|pet bharna hai|pet bhara nahi|khaana khaana hai|dinner time|lunch time|breakfast time|khana time|meal time|khaane ka time|khaana banao|khaana bana du|khaana banane ka mann hai|khaana khaane ka mood|khaana khaane ka mann hai|what to eat|kya khana|kya khaana|kya khayein|kya khilayein|kuch tasty|kuch healthy|kuch light|kuch heavy|kuch khila do|khana khaane ka mann hai|khaana khaane ka mood|khaana khaane ka time|khaana hai yaar)\b/i;
+if (genericFoodWords.test(message)) {
+  intent.has_food_mention = true;
+}
   // === EXTRA: Common dish-specific intents ===
   if (/\b(roti|chapati|paratha|naan|phulka)\b/.test(message)) intent.wants_roti = true;
   if (/\b(rice|chawal|jeera rice|pulao|khichdi)\b/.test(message)) intent.wants_rice = true;

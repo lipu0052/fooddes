@@ -93,6 +93,7 @@ export interface DetectedIntent {
   typical_spice_profile?: string[];
   is_vague?: boolean;
   raw_input?: string;
+  has_food_mention?:boolean;
 }
 
 export interface RecipeMatch {

@@ -45,13 +45,15 @@ function isFoodRelated(intent: DetectedIntent): boolean {
     intent.wants_roti ||
     intent.wants_rice ||
     intent.wants_biryani ||
-    intent.is_vague
+    intent.is_vague ||
+    intent.has_food_mention
   );
 }
 
 export function getCookKitRecommendation(
   intent: DetectedIntent
 ): RecommendationResult {
+
 
   if (!isFoodRelated(intent)) {
     return {
@@ -97,43 +99,58 @@ export function getCookKitRecommendation(
     const excluded_reasons: string[] = [];
 
     if (intent.veg_preference && recipe.veg_nonveg !== intent.veg_preference) {
-      excluded_reasons.push(`Does not match your ${intent.veg_preference} preference.`);
+      excluded_reasons.push(`Not ${intent.veg_preference === "veg" ? "vegetarian" : "non-vegetarian"}.`);
     }
-    if (intent.jain && !recipe.diet_tags.includes("jain")) {
-      excluded_reasons.push("Not Jain-friendly (may contain onion/garlic/roots).");
-    }
-    if (intent.exclude_spicy && recipe.spice_level === "spicy") {
-      excluded_reasons.push("Too spicy for your preference.");
-    }
-    if (intent.time_constraint) {
-      const totalTime = recipe.prep_time_minutes + recipe.cook_time_minutes;
-      if (totalTime > intent.time_constraint) {
-        excluded_reasons.push(`Exceeds your time limit of ${intent.time_constraint} mins.`);
-      }
-    }
-    if (intent.no_chopping && recipe.prep_time_minutes > 5) {
-      excluded_reasons.push("Requires chopping/prep, which you wanted to avoid.");
-    }
-    if (intent.no_dairy && recipe.contains_dairy) {
-      excluded_reasons.push("Contains dairy.");
-    }
+
+    // NO PANEER - STRICT HARD EXCLUSION
     if (intent.no_paneer && recipe.contains_paneer) {
-      excluded_reasons.push("Contains paneer.");
+      excluded_reasons.push("Contains paneer (excluded as per your request).");
     }
+
+    // Wants paneer - strict inclusion
     if (intent.wants_paneer && !recipe.contains_paneer) {
       excluded_reasons.push("Does not contain paneer.");
     }
-    if (intent.no_egg && recipe.contains_egg) {
-      excluded_reasons.push("Contains egg.");
+
+    // Jain
+    if (intent.jain && !recipe.diet_tags.includes("jain")) {
+      excluded_reasons.push("Not Jain-friendly (may contain onion/garlic/roots).");
     }
-    if (intent.allergen_tags?.some((tag) => recipe.allergen_tags.includes(tag))) {
-      excluded_reasons.push("Contains allergen(s) you want to avoid.");
-    }
-    if (intent.avoid_if?.some((tag) => recipe.avoid_if.includes(tag))) {
-      excluded_reasons.push("Matches an avoid condition.");
-    }
-    if (intent.seasonality && !intent.seasonality.some((s) => recipe.seasonality.includes(s))) {
-      excluded_reasons.push("Not in season.");
+    // Explanation logic
+    else if (intent.is_vague || intent.has_food_mention) {
+      explanation = " Here are some popular, safe, and comforting options that work for almost everyone! 😋";
+    } else if (intent.veg_preference === "veg" && intent.no_paneer) {
+      explanation = "Pure veg without paneer — here are some delicious, paneer-free vegetarian options! 🌿";
+    } else if (intent.jain) {
+      explanation = `Jain-friendly options — no onion/garlic/roots:`;
+    } else if (intent.low_oil && intent.high_protein) {
+      explanation = `Perfect — high protein with very less oil! Here are lighter, protein-packed options:`;
+    } else if (intent.low_oil) {
+      explanation = `Got it — very less oil! Here are light, minimal-oil choices:`;
+    } else if (intent.high_protein) {
+      explanation = `High protein picks coming right up — here are the best options:`;
+    } else if (intent.comfort_food) {
+      explanation = `Comfort food just like home — here are familiar, cozy options:`;
+    } else if (intent.novelty) {
+      explanation = `Something new and different — here are exciting variety options:`;
+    } else if (intent.family_friendly) {
+      explanation = `Family-friendly and kid-approved — here are mild, fun options:`;
+    } else if (intent.light_meal) {
+      explanation = `Light and easy meals — here are non-heavy options:`;
+    } else if (intent.sensitive_stomach) {
+      explanation = `Gentle on the stomach — here are mild, digestible choices:`;
+    } else if (intent.multi_meal) {
+      explanation = `Cook once, eat twice — here are leftover-friendly options:`;
+    } else if (intent.day_type === "weekday") {
+      explanation = `Weekday simple meals — quick and routine-friendly:`;
+    } else if (intent.day_type === "weekend") {
+      explanation = `Weekend specials — indulgent and fun:`;
+    } else if (intent.meal_type === "lunch") {
+      explanation = `Lunch ideas — light and office-friendly:`;
+    } else if (intent.meal_type === "dinner") {
+      explanation = `Dinner options — comforting end-of-day meals:`;
+    } else {
+      explanation = `Found ${matches.length} excellent options tailored to your request:`;
     }
 
     return { passes: excluded_reasons.length === 0, reasons: excluded_reasons };
@@ -147,8 +164,8 @@ export function getCookKitRecommendation(
         intent.package_preference === "ghar_ka_khana"
           ? "Ghar Ka Khana: Everyday comfort, familiar Indian food"
           : intent.package_preference === "aaj_kuch_naya"
-          ? "Aaj Kuch Naya: Novelty, variety, non-traditional"
-          : "Khana Khazana: Abundance, multi-dish premium",
+            ? "Aaj Kuch Naya: Novelty, variety, non-traditional"
+            : "Khana Khazana: Abundance, multi-dish premium",
       type: "hard",
     });
   }
@@ -379,8 +396,8 @@ export function getCookKitRecommendation(
         recipe.protein_density === "high"
           ? 50
           : recipe.protein_density === "medium"
-          ? 15
-          : -20;
+            ? 15
+            : -20;
       reasons.push(`Protein match: ${recipe.protein_density}`);
     }
     if (intent.low_oil) {
@@ -391,8 +408,8 @@ export function getCookKitRecommendation(
         recipe.calorie_density === "light"
           ? 40
           : recipe.calorie_density === "medium"
-          ? 10
-          : -30;
+            ? 10
+            : -30;
     }
     if (intent.sensitive_stomach) {
       if (recipe.spice_level === "mild") score += 20;
@@ -410,8 +427,8 @@ export function getCookKitRecommendation(
           recipe.health_positioning === "healthy" || recipe.calorie_density === "light"
             ? 35
             : recipe.health_positioning === "balanced"
-            ? 10
-            : -20;
+              ? 10
+              : -20;
       } else if (intent.health_preference === "indulgent") {
         score +=
           recipe.health_positioning === "indulgent" || recipe.calorie_density === "high"
@@ -437,25 +454,31 @@ export function getCookKitRecommendation(
       score += 35;
       reasons.push("Quick meal");
     }
-   
+
     if (intent.wants_biryani && recipe.name.toLowerCase().includes("biryani")) {
       score += 80;
       reasons.push("Biryani match");
     }
+    if (intent.veg_preference === "veg" && intent.no_paneer) {
+      if (recipe.veg_nonveg === "veg" && !recipe.contains_paneer) {
+        score += 80; // Very strong boost
+        reasons.push("Pure veg without paneer");
+      }
+    }
 
-    // Vague query boost
-    if (intent.is_vague) {
+    // --- VAGUE / GENERIC FOOD REQUEST BOOST ---
+    if (intent.is_vague || intent.has_food_mention) {
       score += recipe.best_seller ? 100 : 0;
       score += recipe.comfort_food ? 90 : 0;
       score += recipe.veg_nonveg === "veg" ? 80 : 0;
       score += recipe.kid_friendly ? 50 : 0;
       score += recipe.weekday_suitable ? 40 : 0;
       score += recipe.difficulty_level === "easy" ? 30 : 0;
-      reasons.push("Safe, popular choice for vague query");
+      reasons.push("Popular choice for general food request");
       failure_type = "vague_query";
     }
 
-    if (score > 0 || intent.is_vague) {
+    if (score > 0 || (intent.is_vague || intent.has_food_mention)) {
       matches.push({ recipe, score, reasons });
     }
   }
@@ -595,8 +618,8 @@ export function getCookKitRecommendation(
   const decision: "recommendation" | "clarification" | "fallback" = followup_question
     ? "clarification"
     : fallback_used
-    ? "fallback"
-    : "recommendation";
+      ? "fallback"
+      : "recommendation";
 
   if (followup_question && !fallback_used) fallback_used = true;
 
@@ -622,8 +645,8 @@ export function getCookKitRecommendation(
       decision_reason: followup_question
         ? "Clarification required due to conflicting or incomplete intent"
         : fallback_used
-        ? "Fallback triggered because strict constraints reduced viable matches"
-        : "Enough high-confidence matches found",
+          ? "Fallback triggered because strict constraints reduced viable matches"
+          : "Enough high-confidence matches found",
     },
   };
 }
