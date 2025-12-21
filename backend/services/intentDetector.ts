@@ -119,7 +119,8 @@ export function detectIntent(userMessage: string): DetectedIntent {
   const vagueMatch = /\b(kya banau|kya khana|kya bana du|dont ask questions|just recommend|pick for me|surprise me|random|anything|kuch bhi|decide karo|dimag nahi|tired|exhausted|bored|bore ho gaya|kuch bhi chalega|kuch bhi ho|koi bhi)\b/i.test(message);
   intent.is_vague = vagueMatch;
 
- const genericFoodWords = /\b(eat|want to eat|eating|i want to eat|khana hai|khana chahiye|kuch khana|kuch khaana|meal|food|khana|khaana|khaoge|khilao|kha lenge|khana banane ka mood|khana banau|khana bana du|hungry|bhuk lagi|bhukh lagi|pet bharna hai|pet bhara nahi|khaana khaana hai|dinner time|lunch time|breakfast time|khana time|meal time|khaane ka time|khaana banao|khaana bana du|khaana banane ka mann hai|khaana khaane ka mood|khaana khaane ka mann hai|what to eat|kya khana|kya khaana|kya khayein|kya khilayein|kuch tasty|kuch healthy|kuch light|kuch heavy|kuch khila do|khana khaane ka mann hai|khaana khaane ka mood|khaana khaane ka time|khaana hai yaar)\b/i;
+const genericFoodWords =
+/\b(eat(ing)?|food|meal|hungry|kh(a|aa)?n(a|e)?|kha(na|oge|lenge|lo)?|bh(u|oo)k(h)?|dinner|lunch|breakfast|what to eat|kya kha(na|yein)?|khila(o|yein)?|pet bh(ar|ra))\b/i;
 if (genericFoodWords.test(message)) {
   intent.has_food_mention = true;
 }
