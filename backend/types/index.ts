@@ -8,9 +8,8 @@ export type ProteinDensity = "low" | "medium" | "high";
 export type DifficultyLevel = "easy" | "medium" | "hard";
 export type HealthPositioning = "healthy" | "balanced" | "comfort" | "indulgent";
 export type PackageType = "ghar_ka_khana" | "aaj_kuch_naya" | "khana_khazana";
-export type MealType = "lunch" | "dinner";
+export type MealType = "lunch" | "dinner" | "breakfast"; // Added breakfast
 export type DayType = "weekday" | "weekend";
-export type DishFormat = "curry" | "dry" | "gravy" | "rice_based" | "roti_based" | "full_meal";
 
 export interface Recipe {
   id: string;
@@ -47,6 +46,7 @@ export interface Recipe {
   typical_spice_profile: string[];
   typical_user_intents: string[];
   image_url: string;
+  
 }
 
 export interface DetectedIntent {
@@ -65,7 +65,12 @@ export interface DetectedIntent {
   high_protein?: boolean;
   no_dairy?: boolean;
   no_paneer?: boolean;
+  wants_paneer?: boolean;          // NEW: fixed paneer detection
   no_egg?: boolean;
+  quick_meal?: boolean;            // NEW: for jaldi/quick/easy
+  wants_roti?: boolean;            // NEW: for roti/chapati/paratha
+  wants_rice?: boolean;            // NEW: for rice/chawal
+  wants_biryani?: boolean;         // NEW: for biryani/pulao
   allergen_tags?: string[];
   avoid_if?: string[];
   seasonality?: string[];
@@ -80,14 +85,14 @@ export interface DetectedIntent {
   people_count?: number;
   multi_meal?: boolean;
   difficulty_preference?: DifficultyLevel;
-  dish_format?: DishFormat;
+  dish_format?: string;            // Changed to string for flexibility
   weekday_suitable?: boolean;
   weekend_indulgent?: boolean;
   carb_type?: string;
   diet_tags?: string[];
   typical_spice_profile?: string[];
   is_vague?: boolean;
-  raw_input?: string; // ✅ Added
+  raw_input?: string;
 }
 
 export interface RecipeMatch {
@@ -142,5 +147,4 @@ export interface RecommendationResult {
   };
 }
 
-// Union type
 export type GetRecommendationResult = RecommendationResult | OffTopicResult;
